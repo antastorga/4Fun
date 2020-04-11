@@ -14,9 +14,10 @@ Dict = typing.Dict
 Sequence = typing.Sequence
 Iterable = typing.Iterable
 Optional = typing.Optional
+NoReturn = typing.NoReturn
+Callable = typing.Callable
 Chars = Iterable[str]
 Ords = Iterable[int]
-
 
 class StrFromIterable(str):
     def __new__(cls, *args):
@@ -30,79 +31,6 @@ class StrFromIterable(str):
         return value
 
 
-seqType = StrFromIterable
-
-
-""" Castings """
-def _chrs_to_ords(_chrs: Chars, seqType : Optional[Type] = None) -> Ords:
-    if seqType is None:
-        return (ord(c) for c in _chrs)
-    else:
-        return seqType(ord(c) for c in _chrs)
-
-def _ords_to_chrs(_ords: Ords, seqType : Optional[Type] = None) -> Chars:
-    if seqType is None:
-        return (chr(o) for o in _ords)
-    else:
-        return seqType(chr(o) for o in _ords)
-
-def _remove_from_sequence(_seq: Iterable[T], *args: Tuple[T], seqType : Optional[Type] = None) -> Iterable[T]:
-    if seqType is None:
-        return (e for e in _seq if e not in args)
-    elif seqType == set:
-        return set(_seq) - set(args)
-    else:
-        return seqType(e for e in _seq if e not in args)
-
-# Rougly equivalent to itertools.chain
-def chain(*iterables: Tuple[Iterable[T]]) -> Iterable[T]:
-    for it in iterables:
-        for element in it:
-            yield element
-
-""" Digits """
-digits_chrs = string.digits
-
-""" Lower case chars """
-all_chars_lower = string.ascii_lowercase
-vowels_chrs_lower = 'aeiou'
-consonants_chars_lower = _remove_from_sequence(all_chars_lower,
-                                               *vowels_chrs_lower, seqType=seqType)
-
-""" Upper case chars """
-all_chars_upper = string.ascii_uppercase
-vowels_chrs_upper = 'AEIOU'
-consonants_chars_upper = _remove_from_sequence(all_chars_upper,
-                                               *vowels_chrs_upper, seqType=seqType)
-other_chars = string.punctuation
-
-""" Constraints
-"""
-SECONDS_IN_CLIPBOARD = 10
-PASS_MIN = 8
-PASS_MAX = 16
-LETTERS_MIN = 4
-DIGITS_MIN = 4
-
-CASE_SENSITIVE = True
-INCLUDE_LOWER_CASE = False
-INCLUDE_UPPER_CASE = True
-INCLUDE_DIGITS = True
-INCLUDE_OTHERS = False
-INCLUDE_VOWELS = False
-INCLUDE_CONSONANTS = True
-NO_NEXT_MATCH = True
-
-
-def _concat(*_seqs: Tuple[Iterable[T]], seqType : Optional[Type] = None) -> Chars:
-    if seqType is None:
-        return itertools.chain(*_seqs)
-    else:
-        _r_seq = seqType()
-        for _seq in _seqs:
-            _r_seq += _seq
-        return _r_seq
-
 def emptyGen() -> Iterable[T]:
     return
     yield
@@ -110,132 +38,326 @@ def emptyGen() -> Iterable[T]:
 def emptySeq(seqType : Optional[Type] = None) -> Iterable[T]:
     return emptyGen() if seqType is None else seqType()
 
-def _alphabet(seqType : Optional[Type] = None) -> Chars:
-    _alphabet_r, _empty_seq = emptySeq(seqType), emptySeq(seqType)
-    if CASE_SENSITIVE:
-        if INCLUDE_CONSONANTS and INCLUDE_VOWELS:
-            _alphabet_r = _concat(
-                _alphabet_r,
-                all_chars_lower if INCLUDE_LOWER_CASE else _empty_seq,
-                all_chars_upper if INCLUDE_UPPER_CASE else _empty_seq,
-                digits_chrs if INCLUDE_DIGITS else _empty_seq,
-                other_chars if INCLUDE_OTHERS else _empty_seq,
-                seqType=seqType
-            )
-        elif INCLUDE_VOWELS:
-            _alphabet_r = _concat(
-                _alphabet_r,
-                vowels_chrs_lower if INCLUDE_LOWER_CASE else _empty_seq,
-                vowels_chrs_upper if INCLUDE_UPPER_CASE else _empty_seq,
-                digits_chrs if INCLUDE_DIGITS else _empty_seq,
-                other_chars if INCLUDE_OTHERS else _empty_seq,
-                seqType=seqType
-            )
-        elif INCLUDE_CONSONANTS:
-            _alphabet_r = _concat(
-                _alphabet_r,
-                consonants_chars_lower if INCLUDE_LOWER_CASE else _empty_seq,
-                consonants_chars_upper if INCLUDE_UPPER_CASE else _empty_seq,
-                digits_chrs if INCLUDE_DIGITS else _empty_seq,
-                other_chars if INCLUDE_OTHERS else _empty_seq,
-                seqType=seqType
-            )
-    elif INCLUDE_LOWER_CASE or INCLUDE_UPPER_CASE:
-        _alphabet_r = _concat(
-            _alphabet_r,
-            vowels_chrs_lower if INCLUDE_VOWELS else _empty_seq,
-            consonants_chars_lower if INCLUDE_CONSONANTS else _empty_seq,
-            digits_chrs if INCLUDE_DIGITS else _empty_seq,
-            other_chars if INCLUDE_OTHERS else _empty_seq,
-            seqType=seqType
-        )
-    return _alphabet_r
 
-def no_next_match(password: Chars) -> bool:
-    if NO_NEXT_MATCH:
-        comp_tuple = zip(password, password[1:])
-        return not any(i[0] == i[1] for i in comp_tuple)
-    else:
-        return True
+class Options(object):
+    @staticmethod
+    def to_uint(value : T, default: int) -> int:
+        default = default if default > 0 else 0
+        try:
+            result = int(value)
+            result = result
+        except TypeError:
+            result = default
+        finally:
+            return result if result > 0 else default
 
-def countUntil(items: Iterable[T], limit: int) -> (Dict, T, bool):
-    dict_r = {}
-    for i in items:
-        counter = dict_r.get(i, 0) + 1
-        dict_r[i] = counter
-        if counter == limit:
-            return dict_r, i, True
-    return dict_r, i, False
+    @staticmethod
+    def to_bool(value : T) -> bool:
+        return 'true' == value.lower() if isinstance(value, str) else bool(value)
 
-def countConsecutiveUntil_M1(items: Sequence[T], limit: int) -> (Dict, T, bool):
-    dict_r, count, item, found = {}, 1, None, False
-    if len(items) > 1:
-        for i in range(1, len(items)):
-            if items[i-1] == items[i]:
-                count += 1
-            else:
-                dict_r[items[i-1]] = count
-                count = 1
-            if count == limit:
-                item = items[i-1]
-                dict_r[item], found = count, True
-                break
-    elif len(items) == 1:
-        item = items[0]
-        dict_r[item], found = count, True if limit == 1 else False
-    return dict_r, item, found
+class AlphabetOptions(Options):
+    def __init__(self, **kwargs : Dict[str, T]):
+        self.CASE_SENSITIVE = Options.to_bool(kwargs.get('CASE_SENSITIVE', False))
+        self.INCLUDE_LOWER_CASE = Options.to_bool(kwargs.get('INCLUDE_LOWER_CASE', False))
+        self.INCLUDE_UPPER_CASE = Options.to_bool(kwargs.get('INCLUDE_UPPER_CASE', False))
+        self.INCLUDE_DIGITS = Options.to_bool(kwargs.get('INCLUDE_DIGITS', False))
+        self.INCLUDE_OTHERS = Options.to_bool(kwargs.get('INCLUDE_OTHERS', False))
+        self.INCLUDE_VOWELS = Options.to_bool(kwargs.get('INCLUDE_VOWELS', False))
+        self.INCLUDE_CONSONANTS = Options.to_bool(kwargs.get('INCLUDE_CONSONANTS', False))
 
 
-def pairwise(iterable):
-    """iterates pairwise without holding an extra copy of iterable in memory"""
-    a, b = itertools.tee(iterable)
-    next(b, None)
-    return itertools.zip_longest(a, b, fillvalue=None)
+class Alphabet(object):
+    seqType = None
 
-def countConsecutiveUntil(items: Iterable[T], limit: int) -> (Dict, T, bool):
-    dict_r, count, item, found = {}, 1, None, False
-    for a, b in pairwise(items):
-        if b is not None and a == b:
-            count += 1
+    """ METHODS """
+    @staticmethod
+    def _chrs_to_ords(_chrs: Chars, seqType : Optional[Type] = seqType) -> Ords:
+        if seqType is None:
+            return (ord(c) for c in _chrs)
         else:
-            dict_r[a] = count
-            count = 1
-        if count == limit:
-            dict_r[a], item, found = count, a, True
-            break
-    return dict_r, item, found
+            return seqType(ord(c) for c in _chrs)
 
-alphabet = _alphabet(seqType=seqType)
+    @staticmethod
+    def _ords_to_chrs(_ords: Ords, seqType : Optional[Type] = seqType) -> Chars:
+        if seqType is None:
+            return (chr(o) for o in _ords)
+        else:
+            return seqType(chr(o) for o in _ords)
+
+    @staticmethod
+    def _remove_from_sequence(_seq: Iterable[T], *args: Tuple[T], seqType : Optional[Type] = seqType) -> Iterable[T]:
+        if seqType is None:
+            return (e for e in _seq if e not in args)
+        elif seqType == set:
+            return set(_seq) - set(args)
+        else:
+            return seqType(e for e in _seq if e not in args)
+
+    # Rougly equivalent to itertools.chain
+    @staticmethod
+    def _chain(*iterables: Tuple[Iterable[T]]) -> Iterable[T]:
+        for it in iterables:
+            for element in it:
+                yield element
 
 
-print('Alphabet used:\n{}'.format(alphabet))
+class Alphabet(object):
+    """Valid symbols/chars for passwords"""
+    seqType = Alphabet.seqType
 
-while True:
-    PASS_LEN = random.choice(range(PASS_MIN, PASS_MAX))
-    password = ''.join(secrets.choice(alphabet) for i in range(PASS_LEN))
-    if (sum(c.isdigit() for c in password) >= DIGITS_MIN
-        and sum(c.isalpha() for c in password) >= LETTERS_MIN
-        and no_next_match(password)
-        ):
-        break
+    #- Digit chars
+    digits_chrs = string.digits
+    #- Lower case chars
+    all_chars_lower = string.ascii_lowercase
+    vowels_chrs_lower = 'aeiou'
+    consonants_chars_lower = Alphabet._remove_from_sequence(all_chars_lower,
+                                                            *vowels_chrs_lower,
+                                                            seqType=seqType)
+    #- Upper case chars
+    all_chars_upper = string.ascii_uppercase
+    vowels_chrs_upper = 'AEIOU'
+    consonants_chars_upper = Alphabet._remove_from_sequence(all_chars_upper,
+                                                            *vowels_chrs_upper,
+                                                            seqType=seqType)
+    #- Other chars
+    other_chars = string.punctuation
 
-try:
-    pyperclip.copy(password)
-    capture = pyperclip.paste()  # Capture paste and begin countdown
-    try:
-        print('Password generated and copied to clipboard')
-        pyperclip.waitForNewPaste(SECONDS_IN_CLIPBOARD)
-    except:
-        pyperclip.copy('')
-        pass
-except:
-    print('Password generated:\n{}'.format(password))
+    #- Restore previous static methods
+    _chrs_to_ords = staticmethod(Alphabet._chrs_to_ords)
+    _ords_to_chrs = staticmethod(Alphabet._ords_to_chrs)
+    _remove_from_sequence = staticmethod(Alphabet._remove_from_sequence)
+    _chain = staticmethod(itertools.chain)  # Alphabet._chain
 
-print('--Password-Generator end---')
+    #- New static methods
+    @staticmethod
+    def _concat(*_seqs : Tuple[Iterable[T]], seqType : Optional[Type] = seqType) -> Chars:
+        if seqType is None:
+            return Alphabet._chain(*_seqs)
+        else:
+            _r_seq = seqType()
+            for _seq in _seqs:
+                _r_seq += _seq
+            return _r_seq
 
-# Todo:
-# 3. Call functions and saved values only if needed
-# 4. Change to check by conditions added instead of adding them by hand
+    @staticmethod
+    def _alphabet(opts : AlphabetOptions, seqType : Optional[Type] = seqType) -> Chars:
+        _alphabet_r, _empty_seq = emptySeq(seqType), emptySeq(seqType)
+        if opts.CASE_SENSITIVE:
+            _alphabet_r = Alphabet._concat(
+                _alphabet_r,
+
+                Alphabet.all_chars_lower if opts.INCLUDE_LOWER_CASE and opts.INCLUDE_VOWELS and opts.INCLUDE_CONSONANTS else \
+                Alphabet.vowels_chrs_lower if opts.INCLUDE_LOWER_CASE and opts.INCLUDE_VOWELS else \
+                Alphabet.consonants_chars_lower if opts.INCLUDE_LOWER_CASE and opts.INCLUDE_CONSONANTS else \
+                _empty_seq,
+
+                Alphabet.all_chars_upper if opts.INCLUDE_UPPER_CASE and opts.INCLUDE_VOWELS and opts.INCLUDE_CONSONANTS else \
+                Alphabet.vowels_chrs_upper if opts.INCLUDE_UPPER_CASE and opts.INCLUDE_VOWELS else \
+                Alphabet.consonants_chars_upper if opts.INCLUDE_UPPER_CASE and opts.INCLUDE_CONSONANTS else \
+                _empty_seq,
+
+                Alphabet.digits_chrs if opts.INCLUDE_DIGITS else _empty_seq,
+                Alphabet.other_chars if opts.INCLUDE_OTHERS else _empty_seq,
+                seqType=seqType
+            )
+        else:
+            _alphabet_r = Alphabet._concat(
+                _alphabet_r,
+
+                Alphabet.all_chars_lower if opts.INCLUDE_VOWELS and opts.INCLUDE_CONSONANTS else \
+                Alphabet.vowels_chrs_lower if opts.INCLUDE_VOWELS else \
+                Alphabet.consonants_chars_lower if opts.INCLUDE_CONSONANTS else \
+                _empty_seq,
+
+                Alphabet.digits_chrs if opts.INCLUDE_DIGITS else _empty_seq,
+                Alphabet.other_chars if opts.INCLUDE_OTHERS else _empty_seq,
+                seqType=seqType
+            )
+        return _alphabet_r  # (i for i in _alphabet_r) if seqType is None else 
+
+    @classmethod
+    def from_dict(cls, **kwargs : Dict[str, T]):
+        opts = AlphabetOptions(**kwargs)
+        alphabet = cls(opts)
+        return alphabet
+
+    def __init__(self, opts : AlphabetOptions):
+        self._sub_alphabet = Alphabet._alphabet(opts, Alphabet.seqType)
+
+    @property
+    def sub_alphabet(self):
+        return self._sub_alphabet
+
+
+class PasswordConstraints(Options):
+    @staticmethod
+    def validate_pass_len(pass_min : int, pass_max: int) -> NoReturn:
+        if 0 > pass_min or pass_min > pass_max:
+            raise Exception('Values must meet: 0 <= min <= max')
+
+    @staticmethod
+    def validate_group(group_min : int, group_max: int, chars_max: int, non_group: int) -> NoReturn:
+        if 0 > group_min or group_min > group_max or group_max+non_group > chars_max:
+            raise Exception('Values must meet: 0 <= min <= max and max+others <= max_chars')
+
+    def __init__(self, **kwargs : Dict[str, T]):
+        self.PASS_MIN = Options.to_uint(kwargs.get('PASS_MIN'), 0)
+        self.PASS_MAX = Options.to_uint(kwargs.get('PASS_MAX'), self.PASS_MIN)
+        self.validate_pass_len(self.PASS_MIN, self.PASS_MAX)
+        self.PASS_LEN = random.choice(range(self.PASS_MIN, self.PASS_MAX)) if self.PASS_MIN != self.PASS_MAX else self.PASS_MIN
+
+        self.LETTERS_MIN = Options.to_uint(kwargs.get('LETTERS_MIN'), 0)
+        self.LETTERS_MAX = Options.to_uint(kwargs.get('LETTERS_MAX'), self.LETTERS_MIN)  #LETTERS_MIN
+        self.DIGITS_MIN = Options.to_uint(kwargs.get('DIGITS_MIN'), 0)
+        self.DIGITS_MAX = Options.to_uint(kwargs.get('DIGITS_MAX'), self.DIGITS_MIN)  #DIGITS_MIN
+        self.OTHERS_MIN = Options.to_uint(kwargs.get('OTHERS_MIN'), 0)
+        self.OTHERS_MAX = Options.to_uint(kwargs.get('OTHERS_MAX'), self.OTHERS_MIN)  #OTHERS_MIN
+
+        self.validate_group(self.LETTERS_MIN, self.LETTERS_MAX, self.PASS_MAX, self.DIGITS_MAX + self.OTHERS_MAX)
+        self.validate_group(self.DIGITS_MIN, self.DIGITS_MAX, self.PASS_MAX, self.LETTERS_MAX + self.OTHERS_MAX)
+        self.validate_group(self.OTHERS_MIN, self.OTHERS_MAX, self.PASS_MAX, self.LETTERS_MAX + self.DIGITS_MAX)
+        self.NO_NEXT_MATCH = Options.to_bool(kwargs.get('NO_NEXT_MATCH', False))
+
+    @staticmethod
+    def pairwise(iterable: Iterable[T]) -> Iterable[Tuple[T]]:
+        """iterates pairwise without holding an extra copy of iterable in memory"""
+        a, b = itertools.tee(iterable)  # Create copy of iterable
+        next(b, None)  # Move b iterable to next
+        return itertools.zip_longest(a, b, fillvalue=None)
+
+    @staticmethod
+    def no_next_match(password: Chars) -> bool:
+        return not any(a == b for a,b in PasswordConstraints.pairwise(password))
+
+    @staticmethod
+    def isDigit(value: str) -> bool:
+        return value.isdigit()
+
+    @staticmethod
+    def isLetter(value: str) -> bool:
+        return value.isalpha()
+
+    @staticmethod
+    def isLower(value: str) -> bool:
+        return value.islower()
+
+    @staticmethod
+    def isUpper(value: str) -> bool:
+        return value.isupper()
+
+    @staticmethod
+    def isOther(value: str) -> bool:
+        return not value.isalnum() and not value.isspace()
+
+    @staticmethod
+    def countGroup(value: str, dict_r: Dict[str, int]) -> Dict[str, int]:
+        if PasswordConstraints.isLetter(value):
+            dict_r['letters'] = dict_r.get('letters', 0) + 1
+            dict_r['lowers'] = dict_r.get('lowers', 0) + int(PasswordConstraints.isLower(value))
+            dict_r['uppers'] = dict_r.get('uppers', 0) + int(PasswordConstraints.isUpper(value))
+        else:
+            dict_r['digits'] = dict_r.get('digits', 0) + int(PasswordConstraints.isDigit(value))
+            dict_r['others'] = dict_r.get('others', 0) + int(PasswordConstraints.isOther(value))
+        return dict_r
+
+    @staticmethod
+    def countGroups(items: Chars) -> Dict[str, int]:
+        dict_r = {}
+        for i in items:
+            dict_r = PasswordConstraints.countGroup(i, dict_r)
+        return dict_r
+
+    @staticmethod
+    def group_between_min_max(vmin: int, v: int, vmax: int) -> bool:
+        return (vmin <= v) if vmin == vmax else (vmin <= v <= vmax)
+
+    def check(self, passwd: str) -> Iterable[bool]:
+        countedGroups = PasswordConstraints.countGroups(passwd)
+        return [
+            PasswordConstraints.no_next_match(passwd) if self.NO_NEXT_MATCH else True,
+            PasswordConstraints.group_between_min_max(self.DIGITS_MIN, countedGroups.get('digits', 0), self.DIGITS_MAX),
+            PasswordConstraints.group_between_min_max(self.LETTERS_MIN, countedGroups.get('letters', 0), self.LETTERS_MAX),
+            PasswordConstraints.group_between_min_max(self.OTHERS_MIN, countedGroups.get('others', 0), self.OTHERS_MAX),
+        ]
+
+
+class PasswordGeneratorOptions(Options):
+    def __init__(self, **kwargs : Dict[str, T]):
+        self.SECONDS_IN_CLIPBOARD = Options.to_uint(kwargs.get('SECONDS_IN_CLIPBOARD'), 10)
+        self.MAX_RETRY = Options.to_uint(kwargs.get('MAX_RETRY'), 100)
+
+
+class PasswordGenerator(object):
+    seqType = None
+
+    @classmethod
+    def from_dicts(cls, gen_opts: Dict[str, T], opts : Dict[str, T]):
+        pass_gen = cls(PasswordGeneratorOptions(**gen_opts), PasswordConstraints(**opts))
+        return pass_gen
+
+    def __init__(self, gen_opts: PasswordGeneratorOptions, opts : PasswordConstraints, alphabet: Chars):
+        self.gen_opts = gen_opts
+        self.opts = opts
+        # TODO: Try to find a better way to pick from generator 
+        # -     (avoiding "Sample larger than population or is negative")
+        self.alphabet = alphabet if isinstance(alphabet, Sequence) else StrFromIterable(alphabet)
+        self.password = None
+        self.valid = False
+
+    def generate(self, seqType : Optional[Type] = seqType) -> (Iterable[T], bool):
+        i = 0
+        while True:
+            if seqType is None:
+                # TODO: Try to find a better way to pick from generator 
+                # -     (avoiding "Sample larger than population or is negative")
+                password = (secrets.choice(self.alphabet) for i in range(self.opts.PASS_LEN))
+            else:
+                password = seqType(secrets.choice(self.alphabet) for i in range(self.opts.PASS_LEN))
+            valid = all(self.opts.check(password))
+            i += 1
+            if valid or i == self.gen_opts.MAX_RETRY:
+                break
+        self.valid = valid
+        self.password = password
+        return password, valid
+
+    def deliver(self) -> NoReturn:
+        if not self.valid:
+            raise Exception('Sorry, could not find any valid password for your options.')
+        else:
+            try:
+                pyperclip.copy(self.password)
+                capture = pyperclip.paste()  # Capture paste and begin countdown
+                try:
+                    print('Password generated and copied to clipboard')
+                    pyperclip.waitForNewPaste(self.gen_opts.SECONDS_IN_CLIPBOARD)
+                except:
+                    pyperclip.copy('')
+                    pass
+            except:
+                print('Password generated:\n{}'.format(self.password))
+            finally:
+                self.password = ''
+                self.valid = False
+                print('--Password-Generator end---')
+
+
+mine = Alphabet.from_dict(CASE_SENSITIVE = True, INCLUDE_UPPER_CASE = True, INCLUDE_DIGITS = True, INCLUDE_CONSONANTS = True, INCLUDE_OTHERS = True)
+alphabet = mine.sub_alphabet
+print(alphabet)
+
+passwd_gen = PasswordGenerator(PasswordGeneratorOptions(MAX_RETRY=300),
+                               PasswordConstraints(PASS_MIN=8, PASS_MAX=16,
+                                                   LETTERS_MIN=4,
+                                                   DIGITS_MIN=4,
+                                                   OTHERS_MIN=0,
+                                                   NO_NEXT_MATCH = True),
+                               alphabet)
+passwd_gen.generate(seqType=StrFromIterable)
+passwd_gen.deliver()
+
+
+# TODO:
 # 5. Add params
 # - argparse
 # - sys, getopt
