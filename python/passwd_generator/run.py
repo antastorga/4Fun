@@ -67,7 +67,7 @@ class AlphabetOptions(Options):
 
 
 class Alphabet(object):
-    seqType = StrFromIterable
+    seqType = None
 
     """ METHODS """
     @staticmethod
@@ -132,7 +132,7 @@ class Alphabet(object):
     @staticmethod
     def _concat(*_seqs : Tuple[Iterable[T]], seqType : Optional[Type] = seqType) -> Chars:
         if seqType is None:
-            return _chain(*_seqs)
+            return Alphabet._chain(*_seqs)
         else:
             _r_seq = seqType()
             for _seq in _seqs:
@@ -173,7 +173,7 @@ class Alphabet(object):
                 Alphabet.other_chars if opts.INCLUDE_OTHERS else _empty_seq,
                 seqType=seqType
             )
-        return _alphabet_r
+        return _alphabet_r  # (i for i in _alphabet_r) if seqType is None else 
 
     @classmethod
     def from_dict(cls, **kwargs : Dict[str, T]):
@@ -288,7 +288,7 @@ class PasswordGeneratorOptions(Options):
 
 
 class PasswordGenerator(object):
-    seqType = StrFromIterable
+    seqType = None
 
     @classmethod
     def from_dicts(cls, gen_opts: Dict[str, T], opts : Dict[str, T]):
@@ -298,7 +298,9 @@ class PasswordGenerator(object):
     def __init__(self, gen_opts: PasswordGeneratorOptions, opts : PasswordConstraints, alphabet: Chars):
         self.gen_opts = gen_opts
         self.opts = opts
-        self.alphabet = alphabet
+        # TODO: Try to find a better way to pick from generator 
+        # -     (avoiding "Sample larger than population or is negative")
+        self.alphabet = alphabet if isinstance(alphabet, Sequence) else StrFromIterable(alphabet)
         self.password = None
         self.valid = False
 
@@ -306,6 +308,8 @@ class PasswordGenerator(object):
         i = 0
         while True:
             if seqType is None:
+                # TODO: Try to find a better way to pick from generator 
+                # -     (avoiding "Sample larger than population or is negative")
                 password = (secrets.choice(self.alphabet) for i in range(self.opts.PASS_LEN))
             else:
                 password = seqType(secrets.choice(self.alphabet) for i in range(self.opts.PASS_LEN))
@@ -342,20 +346,18 @@ mine = Alphabet.from_dict(CASE_SENSITIVE = True, INCLUDE_UPPER_CASE = True, INCL
 alphabet = mine.sub_alphabet
 print(alphabet)
 
-passwd_gen = PasswordGenerator(PasswordGeneratorOptions(),
+passwd_gen = PasswordGenerator(PasswordGeneratorOptions(MAX_RETRY=300),
                                PasswordConstraints(PASS_MIN=8, PASS_MAX=16,
                                                    LETTERS_MIN=4,
                                                    DIGITS_MIN=4,
                                                    OTHERS_MIN=0,
                                                    NO_NEXT_MATCH = True),
                                alphabet)
-passwd_gen.generate()
+passwd_gen.generate(seqType=StrFromIterable)
 passwd_gen.deliver()
 
 
-# Todo:
-# 4. Change to check by conditions added instead of adding them by hand
+# TODO:
 # 5. Add params
 # - argparse
 # - sys, getopt
-# 6. Add if options are valid and could generate a password
